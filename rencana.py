@@ -1,1 +1,1 @@
-dsidaf.dsfoiafd. adsfioasf.
+print("Hello, World!")
