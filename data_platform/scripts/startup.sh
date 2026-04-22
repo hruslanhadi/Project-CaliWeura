@@ -32,7 +32,7 @@ wait_for_service() {
 
 # Start Docker Compose services
 echo "🐳 Starting Docker Compose services..."
-docker-compose up -d
+docker compose up -d
 
 # Wait for critical services
 echo ""
@@ -47,17 +47,17 @@ echo ""
 echo "📦 Initializing MinIO buckets..."
 
 # Create buckets using mc (MinIO client)
-docker-compose exec -T minio mc alias set minio http://minio:9000 minioadmin minioadmin_secure_pass
-docker-compose exec -T minio mc mb minio/bronze || true
-docker-compose exec -T minio mc mb minio/silver || true
-docker-compose exec -T minio mc mb minio/gold || true
+docker compose exec -T minio mc alias set minio http://minio:9000 minioadmin minioadmin_secure_pass
+docker compose exec -T minio mc mb minio/bronze || true
+docker compose exec -T minio mc mb minio/silver || true
+docker compose exec -T minio mc mb minio/gold || true
 
 echo "✅ MinIO buckets initialized"
 
 # Generate test data
 echo ""
 echo "📊 Generating test data..."
-docker-compose exec -T airflow_webserver python /opt/airflow/scripts/generate_data.py
+docker compose exec -T airflow_webserver python /opt/airflow/scripts/generate_data.py
 
 echo ""
 echo "=========================================="
