@@ -7,8 +7,8 @@ Transforms raw order data from bronze to silver layer
 - Transformations: Validation, enrichment, join with masters
 - Output: Delta Lake in s3://silver/orders/
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import logging

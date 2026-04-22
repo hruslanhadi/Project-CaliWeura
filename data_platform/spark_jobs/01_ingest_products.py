@@ -6,8 +6,8 @@ Reads product data from source and writes to MinIO bronze bucket
 - Source: Can be CSV, JSON, or API
 - Output: Parquet files in s3://bronze/products/
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import logging

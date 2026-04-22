@@ -7,8 +7,8 @@ This DAG orchestrates the medallion architecture pipeline:
 2. Silver Layer: Transformation and cleaning
 3. Gold Layer: Aggregation and business intelligence
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 from datetime import datetime, timedelta

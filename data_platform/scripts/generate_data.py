@@ -11,8 +11,8 @@ Generates synthetic test data for the data platform
 Usage:
     python generate_data.py
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import csv

@@ -5,8 +5,8 @@ Integration Tests
 
 Tests for the data platform components
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import unittest

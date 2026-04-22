@@ -7,8 +7,8 @@ Transforms raw product data from bronze to silver layer
 - Transformations: Deduplication, validation, enrichment
 - Output: Delta Lake in s3://silver/products/
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import logging

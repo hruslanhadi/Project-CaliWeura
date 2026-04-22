@@ -5,8 +5,8 @@ Data Quality Validation Script
 
 Validates data quality metrics across the pipeline
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import sys

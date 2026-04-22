@@ -13,8 +13,8 @@ This job:
 3. Loads fact and dimension tables to PostgreSQL
 4. Computes aggregation tables
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import logging

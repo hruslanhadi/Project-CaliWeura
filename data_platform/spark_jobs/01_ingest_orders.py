@@ -6,8 +6,8 @@ Reads order/sales transaction data from source and writes to MinIO bronze bucket
 - Source: Can be CSV, JSON, database, or Kafka
 - Output: Parquet files in s3://bronze/orders/
 
-Author: Data Engineering Team
-Date: 2024
+Author: hruslanhadi
+Date: 2026-04-21
 """
 
 import logging
