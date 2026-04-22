@@ -1,0 +1,46 @@
+# Data Platform Configuration YAML
+# Environment Variables
+
+services:
+  postgres:
+    user: airflow
+    password: airflow_secure_pass
+    database: airflow
+
+  minio:
+    access_key: minioadmin
+    secret_key: minioadmin_secure_pass
+    buckets:
+      - bronze
+      - silver
+      - gold
+
+  spark:
+    master: spark://spark_master:7077
+    memory:
+      driver: 1g
+      executor: 1g
+    cores:
+      executor: 2
+      instances: 2
+
+  kafka:
+    brokers: kafka:9092
+    topics:
+      - events
+      - orders
+      - customers
+
+data_layers:
+  bronze:
+    path: s3://bronze/
+    format: parquet
+    description: Raw data ingestion layer
+  silver:
+    path: s3://silver/
+    format: delta
+    description: Cleaned and transformed data
+  gold:
+    path: postgresql://warehouse
+    format: table
+    description: Aggregated business tables

@@ -1,0 +1,38 @@
+*.pyc
+__pycache__/
+.pytest_cache/
+.DS_Store
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.idea/
+.vscode/
+*.log
+.env.local
+
+# Docker
+docker-compose.override.yml
+
+# Data
+data/customers.csv
+data/products.csv
+data/orders.csv
+
+# Logs
+logs/
+*.log
+
+# MinIO data
+minio_data/
+
+# PostgreSQL data
+postgres_data/
+
+# Spark
+spark_logs/
+
+# Airflow
+airflow_logs/
+.airflow-webserver-access-log
