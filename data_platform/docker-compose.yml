@@ -45,7 +45,7 @@ services:
   # ----------------------
   # Spark (Single Node)
   # ----------------------
-  spark:
+  spark_master:
     image: bitnamilegacy/spark:3.4.1
     container_name: caliweura_spark_master
     environment:
@@ -60,12 +60,21 @@ services:
       - ./spark_jobs:/opt/spark/jobs
     mem_limit: 2g
     cpus: 1.2
-
+  
+  # ----------------------
+  # Airflow build image
+  # ----------------------
+  x-airflow-image: &airflow-image
+    image: caliweura-airflow:latest
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.airflow
+    
   # ----------------------
   # Airflow Init
   # ----------------------
   airflow-init:
-    image: apache/airflow:2.9.0
+    <<: *airflow-image
     container_name: caliweura_airflow_init
     depends_on:
       postgres:
@@ -75,34 +84,28 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_secure_pass@postgres/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     entrypoint: >
-      bash -c "
-      airflow db init &&
-      airflow users create
-      --username admin
-      --password admin
-      --firstname admin
-      --lastname user
-      --role Admin
-      --email admin@email.com
-      "
+      sh -c "airflow db upgrade &&
+             airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@airflow.local --password admin123 "
     restart: "no"
 
   # ----------------------
   # Airflow Webserver
   # ----------------------
   airflow-web:
-    image: apache/airflow:2.9.0
+    image: caliweura-airflow:latest
     container_name: caliweura_airflow_webserver
     depends_on:
       airflow-init:
         condition: service_completed_successfully
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_secure_pass@postgres/airflow
     volumes:
       - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
       - ./spark_jobs:/opt/airflow/spark_jobs
+      - ./scripts:/opt/airflow/scripts
+      - ./configs:/opt/airflow/configs
+      - airflow_logs:/opt/airflow/logs
     ports:
       - "8080:8080"
     command: webserver
@@ -113,18 +116,20 @@ services:
   # Airflow Scheduler
   # ----------------------
   airflow-scheduler:
-    image: apache/airflow:2.9.0
+    image: caliweura-airflow:latest
     container_name: caliweura_airflow_scheduler
     depends_on:
       airflow-web:
         condition: service_started
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_secure_pass@postgres/airflow
     volumes:
       - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
       - ./spark_jobs:/opt/airflow/spark_jobs
+      - ./scripts:/opt/airflow/scripts
+      - ./configs:/opt/airflow/configs
+      - airflow_logs:/opt/airflow/logs
     command: scheduler
     mem_limit: 1.5g
     cpus: 1
@@ -163,7 +168,8 @@ services:
 volumes:
   postgres_data:
   minio_data:
-
+  airflow_logs:
+  spark_logs:
 networks:
   default:
     name: dp_network

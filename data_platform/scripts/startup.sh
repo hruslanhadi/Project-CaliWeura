@@ -57,7 +57,7 @@ echo "✅ MinIO buckets initialized"
 # Generate test data
 echo ""
 echo "📊 Generating test data..."
-docker compose exec -T airflow_webserver python /opt/airflow/scripts/generate_data.py
+docker compose exec -T airflow-web python /opt/airflow/scripts/generate_data.py
 
 echo ""
 echo "=========================================="

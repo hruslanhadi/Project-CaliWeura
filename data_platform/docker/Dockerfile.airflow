@@ -1,9 +1,9 @@
-FROM apache/airflow:2.7-python3.11
+FROM apache/airflow:2.9.0-python3.10
 
-# Install system dependencies
 USER root
+
 RUN apt-get update && apt-get install -y \
-    openjdk-11-jdk-headless \
+    openjdk-17-jdk-headless \
     curl \
     wget \
     git \
@@ -11,14 +11,10 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set JAVA_HOME
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH="$JAVA_HOME/bin:$PATH"
 
-# Switch back to airflow user
 USER airflow
 
-# Install Python dependencies for data processing
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-EXPOSE 8080
+COPY airflow_req.txt .
+RUN pip install --no-cache-dir -r airflow_req.txt

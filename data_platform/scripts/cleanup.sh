@@ -15,11 +15,11 @@ echo
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "🗑️  Removing containers and volumes..."
-    docker-compose down -v
+    docker compose down -v
     echo "✅ Containers and volumes removed"
 else
     echo "🛑 Removing containers only (keeping data)..."
-    docker-compose down
+    docker compose down
     echo "✅ Containers removed"
 fi
 
