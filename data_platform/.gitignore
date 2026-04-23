@@ -1,38 +1,106 @@
+# =====================================================
+# ENVIRONMENT FILES - SECRETS PROTECTION
+# =====================================================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.test
+!.env.example
+!.env.development
+
+# =====================================================
+# SECRETS AND CREDENTIALS
+# =====================================================
+*.key
+*.pem
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+.secrets
+private/
+id_rsa
+id_dsa
+*.pub
+
+# =====================================================
+# PYTHON
+# =====================================================
 *.pyc
 __pycache__/
 .pytest_cache/
-.DS_Store
 *.egg-info/
 dist/
 build/
 .venv/
 venv/
+env/
+ENV/
+.Python
+pip-wheel-metadata/
+
+# =====================================================
+# IDE AND EDITORS
+# =====================================================
 .idea/
 .vscode/
-*.log
-.env.local
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
 
-# Docker
+# =====================================================
+# DOCKER
+# =====================================================
 docker-compose.override.yml
+Dockerfile.bak
 
-# Data
+# =====================================================
+# DATA AND LOGS
+# =====================================================
+logs/
+*.log
+*.log.*
 data/customers.csv
 data/products.csv
 data/orders.csv
+backups/
 
-# Logs
-logs/
-*.log
-
-# MinIO data
+# =====================================================
+# DOCKER VOLUMES (LOCAL)
+# =====================================================
 minio_data/
-
-# PostgreSQL data
 postgres_data/
-
-# Spark
 spark_logs/
-
-# Airflow
 airflow_logs/
+redis_data/
+prometheus_data/
+grafana_data/
+
+# =====================================================
+# AIRFLOW SPECIFICS
+# =====================================================
 .airflow-webserver-access-log
+airflow_home/
+airflow.db
+
+# =====================================================
+# BUILD AND CACHE
+# =====================================================
+.cache/
+*.tar.gz
+*.zip
+node_modules/
+
+# =====================================================
+# OS SPECIFIC
+# =====================================================
+Thumbs.db
+.project
+.pydevproject
+.settings/
