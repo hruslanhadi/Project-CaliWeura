@@ -1,4 +1,4 @@
-# Data Platform: Medallion Architecture with Docker Compose
+# END TO END DATA PIPELINE EXAMPLE: Medallion Architecture with Docker Compose
 
 ## Overview
 
