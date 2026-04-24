@@ -1,131 +1,102 @@
-# Quick Start Guide
+# Quick Start
 
-## 60-Second Setup
+This guide is for local development on a 16 GB laptop.
+
+## Architecture
+
+| Environment | Airflow | Spark | Memory profile | Best for | Scaling |
+| --- | --- | --- | --- | --- | --- |
+| Development | `LocalExecutor` | single `spark-master` node | conservative | local coding and DAG debugging | none |
+| Production | `CeleryExecutor` | standalone `spark-master` + `spark-worker` | 32 GB+ host | parallel task execution | `--scale airflow-worker=N --scale spark-worker=N` |
+
+## Start The Dev Stack
 
 ```bash
-# 1. Navigate to project
 cd data_platform
-
-# 2. Make scripts executable
 chmod +x scripts/*.sh
-
-# 3. Start services
-docker-compose up -d
-
-# 4. Wait for readiness (2-3 minutes)
-sleep 30
-
-# 5. Initialize data
-docker-compose exec airflow_webserver python scripts/generate_data.py
-
-# 6. Access Airflow
-# Open: http://localhost:8080
-# Login: admin / admin123
-```
-
-## First Run Checklist
-
-- [ ] Docker & Docker Compose installed
-- [ ] All services started: `docker-compose ps` (all running)
-- [ ] Health check passed: `./scripts/health_check.sh`
-- [ ] Test data generated: `ls -lh data/`
-- [ ] Airflow UI accessible: http://localhost:8080
-
-## Run Your First Pipeline
-
-1. **Go to Airflow** → http://localhost:8080
-2. **Find DAG** → Search for `data_platform_medallion_pipeline`
-3. **Enable DAG** → Toggle the blue switch on the left
-4. **Trigger Run** → Click blue play button, then "Trigger"
-5. **Monitor** → Watch progress in "Graph" tab
-6. **Expected Duration** → 3-5 minutes
-
-## Access All UIs
-
-| Service | URL | Login |
-|---------|-----|-------|
-| **Airflow** | http://localhost:8080 | admin/admin123 |
-| **MinIO** | http://localhost:9001 | minioadmin/minioadmin_secure_pass |
-| **Spark** | http://localhost:8081 | - |
-
-## Query Results in PostgreSQL
-
-```bash
-# Connect to database
-psql -h localhost -U warehouse_user -d data_warehouse -W
-# Password: warehouse_pass
-
-# Check loaded data
-SELECT COUNT(*) FROM fact_sales;
-SELECT COUNT(*) FROM dim_customers;
-SELECT COUNT(*) FROM dim_products;
-
-# Sample query
-SELECT 
-    dc.first_name, 
-    dc.last_name, 
-    SUM(fs.total_amount) as total_spent
-FROM fact_sales fs
-JOIN dim_customers dc ON fs.customer_id = dc.customer_id
-GROUP BY dc.customer_id, dc.first_name, dc.last_name
-ORDER BY total_spent DESC
-LIMIT 10;
-```
-
-## Common Commands
-
-```bash
-# View all services
-docker-compose ps
-
-# View logs
-docker-compose logs -f airflow_scheduler
-
-# Stop services
-docker-compose stop
-
-# Clean up everything
-./scripts/cleanup.sh
-
-# Health check
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml exec -T airflow-web python /opt/airflow/scripts/generate_data.py
 ./scripts/health_check.sh
-
-# Restart specific service
-docker-compose restart spark_master
 ```
 
-## Troubleshooting
+Open:
 
-**Services won't start?**
+- Airflow: `http://localhost:8080`
+- MinIO: `http://localhost:9001`
+- Spark UI: `http://localhost:8081`
+
+Default dev credentials:
+
+- Airflow: `admin / admin123`
+- MinIO: `minioadmin / minioadmin_dev_pass`
+- Warehouse DB: `warehouse_user / warehouse_dev_pass`
+
+## Trigger The Pipeline
+
+1. Open Airflow and enable `data_platform_medallion_pipeline`.
+2. Click `Trigger DAG w/ config`.
+3. Use one of these JSON payloads.
+
+Default incremental run:
+
+```json
+{}
+```
+
+Selected datasets to bronze only:
+
+```json
+{
+  "datasets": ["customers", "orders"],
+  "target_layer": "bronze"
+}
+```
+
+Manual repair window:
+
+```json
+{
+  "run_mode": "incremental",
+  "start_date": "2026-04-01",
+  "end_date": "2026-04-07",
+  "datasets": ["all"],
+  "skip_quality_checks": false,
+  "target_layer": "all"
+}
+```
+
+## DAG Parameters
+
+The pipeline exposes these manual-trigger parameters:
+
+- `run_mode`: `incremental` or `full_refresh`
+- `start_date`: optional ISO date
+- `end_date`: optional ISO date
+- `datasets`: `"all"` or a list from `customers`, `products`, `orders`
+- `skip_quality_checks`: `true` or `false`
+- `target_layer`: `bronze`, `silver`, `gold`, or `all`
+
+Behavior:
+
+1. Airflow opens the trigger dialog and accepts JSON.
+2. `validate_runtime_params` checks values and fills default dates from the run window.
+3. Bronze and silver tasks skip automatically when the chosen dataset or layer does not apply.
+4. Spark tasks receive the validated runtime config as application arguments and env vars.
+5. Gold warehouse loading and SQL aggregations run only when `target_layer` includes `gold` or `all`.
+6. Invalid date windows or gold runs with partial datasets fail before Spark submission.
+
+## Smoke Tests
+
 ```bash
-docker system prune -a
-docker-compose pull
-docker-compose up -d
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml exec airflow-web pytest tests/test_dag_integrity.py tests/test_integration.py
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml exec airflow-web airflow dags test ops_connection_smoke_test 2026-04-23
 ```
 
-**Out of memory?**
-- Close other applications
-- Check available RAM: `free -h`
-- Reduce executor memory in `docker-compose.yml`
+## Useful Commands
 
-**DAG not showing?**
 ```bash
-docker-compose logs airflow_scheduler | grep ERROR
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml logs -f airflow-scheduler
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml down
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml exec airflow-web airflow dags list
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml exec postgres psql -U warehouse_user -d data_warehouse
 ```
-
-**Can't connect to PostgreSQL?**
-```bash
-docker-compose exec postgres pg_isready -U warehouse_user
-```
-
-## Next Steps
-
-1. **Review** the main [README.md](README.md)
-2. **Explore** [ARCHITECTURE.md](ARCHITECTURE.md) for deep dive
-3. **Modify** DAGs in `dags/` folder
-4. **Add** new Spark jobs in `spark_jobs/`
-5. **Deploy** to production (see README deployment section)
-
----
-
-**Ready to go!** 🚀

@@ -1,82 +1,59 @@
-# =====================================================
-# DEPLOYMENT QUICK REFERENCE
-# =====================================================
+# Deployment Guide
 
-## Development (16GB Laptop)
+## Development Bootstrapping
 
 ```bash
 cd data_platform
-cp .env.development .env
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-# Wait 2-3 minutes
-docker compose ps
-# Open http://localhost:8080 (admin/admin123)
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml config
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml exec airflow-web python /opt/airflow/scripts/generate_data.py
+docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml exec airflow-web airflow dags list
 ```
 
-## Production
+Expected shape:
+
+- Airflow uses `LocalExecutor`
+- Spark runs as a single `spark-master`
+- `ops_connection_smoke_test` is available
+
+## Production Bootstrapping
+
+Update `.env.production` first:
+
+- `POSTGRES_PASSWORD`
+- `PG_WAREHOUSE_PASSWORD`
+- `PG_ANALYTICS_PASSWORD`
+- `MINIO_ROOT_PASSWORD`
+- `AIRFLOW_ADMIN_PASSWORD`
+- `FERNET_KEY`
+- `REDIS_PASSWORD`
+
+Then deploy:
 
 ```bash
 cd data_platform
-cp .env.production .env
-# EDIT .env with actual passwords
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-docker compose logs -f airflow-init
-# Wait for "service_completed_successfully"
-docker compose ps
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml logs -f airflow-init
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d --scale airflow-worker=2 --scale spark-worker=2
 ```
 
-## Useful Commands
+## Post-Deploy Verification
 
 ```bash
-# Development logs
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f airflow-scheduler
-
-# Production logs
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f airflow-init
-
-# Stop services
-docker compose -f docker-compose.yml -f docker-compose.dev.yml down
-docker compose -f docker-compose.yml -f docker-compose.prod.yml down
-
-# Check health
-./scripts/health_check.sh
-
-# Database access
-docker compose exec postgres psql -U airflow_meta -d airflow
-
-# MinIO browser
-# http://localhost:9001 (minioadmin/password)
-
-# Spark UI
-# http://localhost:8081
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml exec airflow-web airflow config get-value core executor
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml exec airflow-web airflow connections get spark_default
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml exec airflow-web airflow connections get postgres_warehouse
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml exec airflow-web airflow connections get minio_default
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml exec airflow-web airflow dags test ops_connection_smoke_test 2026-04-23
 ```
 
-## Troubleshooting
+## Rollback Basics
 
 ```bash
-# Service logs
-docker compose logs <service_name>
-
-# Resource usage
-docker stats
-
-# Clean up
-docker system prune
-docker volume prune
-
-# Force recreate
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml down
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-## Security Checklist
-
-- [ ] Change admin password: `docker compose exec airflow-web airflow users create --username admin --role Admin --password newpass`
-- [ ] Update .env credentials
-- [ ] Enable RBAC
-- [ ] Configure TLS/SSL
-- [ ] Review network policies
-- [ ] Set up monitoring
-- [ ] Enable audit logging
-- [ ] Test backup/recovery
-
-For detailed information, see [RUNBOOKS.md](RUNBOOKS.md)
+For persistent data rollback, restore PostgreSQL and MinIO from backups before bringing Airflow back up.

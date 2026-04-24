@@ -30,9 +30,10 @@ wait_for_service() {
     echo "✅ $host:$port is ready"
 }
 
-# Start Docker Compose services
+COMPOSE_FILES="--env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml"
+
 echo "🐳 Starting Docker Compose services..."
-docker compose up -d
+docker compose $COMPOSE_FILES up -d
 
 # Wait for critical services
 echo ""
@@ -47,17 +48,17 @@ echo ""
 echo "📦 Initializing MinIO buckets..."
 
 # Create buckets using mc (MinIO client)
-docker compose exec -T minio mc alias set minio http://minio:9000 minioadmin minioadmin_secure_pass
-docker compose exec -T minio mc mb minio/bronze || true
-docker compose exec -T minio mc mb minio/silver || true
-docker compose exec -T minio mc mb minio/gold || true
+docker compose $COMPOSE_FILES exec -T minio mc alias set minio http://minio:9000 minioadmin minioadmin_dev_pass
+docker compose $COMPOSE_FILES exec -T minio mc mb minio/bronze || true
+docker compose $COMPOSE_FILES exec -T minio mc mb minio/silver || true
+docker compose $COMPOSE_FILES exec -T minio mc mb minio/gold || true
 
 echo "✅ MinIO buckets initialized"
 
 # Generate test data
 echo ""
 echo "📊 Generating test data..."
-docker compose exec -T airflow-web python /opt/airflow/scripts/generate_data.py
+docker compose $COMPOSE_FILES exec -T airflow-web python /opt/airflow/scripts/generate_data.py
 
 echo ""
 echo "=========================================="
@@ -66,9 +67,9 @@ echo "=========================================="
 echo ""
 echo "📊 Access Points:"
 echo "   - Airflow UI:     http://localhost:8080 (admin/admin123)"
-echo "   - MinIO Console:  http://localhost:9001 (minioadmin/minioadmin_secure_pass)"
+echo "   - MinIO Console:  http://localhost:9001 (minioadmin/minioadmin_dev_pass)"
 echo "   - Spark Master:   http://localhost:8081"
-echo "   - PostgreSQL:     localhost:5432 (airflow/airflow_secure_pass)"
+echo "   - PostgreSQL:     localhost:5432 (warehouse_user/warehouse_dev_pass)"
 echo ""
 echo "🚀 Next steps:"
 echo "   1. Access Airflow at http://localhost:8080"

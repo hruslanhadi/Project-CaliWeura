@@ -1,25 +1,6 @@
-# ===================================================
-# DOCKER-COMPOSE PRODUCTION
-# ===================================================
-# High-performance production deployment with:
-# - CeleryExecutor for distributed execution
-# - High resource allocation
-# - Security hardening
-# - Monitoring and observability
-# - HA/Failover capabilities
-
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-version: "3.9"
-
 services:
-
-  # ----------------------
-  # PostgreSQL - PRODUCTION HARDENED
-  # ----------------------
   postgres:
     image: postgres:15-alpine
-    container_name: caliweura_postgres
     env_file:
       - .env.production
     environment:
@@ -29,16 +10,14 @@ services:
       POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./scripts/init_warehouse.sql:/docker-entrypoint-initdb.d/02-warehouse.sql
-      - ./scripts/init_users.sql:/docker-entrypoint-initdb.d/03-users.sql
+      - ./scripts/init_users.sh:/docker-entrypoint-initdb.d/01-init_users.sh:ro
+      - ./scripts/init_db.sh:/docker-entrypoint-initdb.d/02-init_db.sh:ro
+      - ./scripts/init_warehouse.sh:/docker-entrypoint-initdb.d/03-init_warehouse.sh:ro
       - ./backups:/backups
-    ports:
-      - "5432:5432"
     mem_limit: 4g
     cpus: 2
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,30 +26,19 @@ services:
     networks:
       - dp_backend
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
-  # ----------------------
-  # MinIO (Data Lake) - PRODUCTION
-  # ----------------------
   minio:
     image: minio/minio:RELEASE.2024-01-16T16-07-38Z
-    container_name: caliweura_minio
     env_file:
       - .env.production
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_CONSOLE_ADDRESS: ":9001"
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
       - ./backups/minio:/minio/backups
     ports:
-      - "9000:9000"
       - "9001:9001"
     mem_limit: 2g
     cpus: 1.5
@@ -83,67 +51,72 @@ services:
     restart: always
     networks:
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
-  # ----------------------
-  # Spark (Single Node) - PRODUCTION HIGH-PERFORMANCE
-  # ----------------------
-  spark_master:
-    image: apache/spark:3.4.1
-    container_name: caliweura_spark_master
+  spark-master:
+    image: bitnami/spark:3.4.1
     env_file:
       - .env.production
     environment:
       SPARK_MODE: master
       SPARK_RPC_AUTHENTICATION_ENABLED: no
       SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
       SPARK_SSL_ENABLED: no
-      SPARK_MASTER_MEMORY: ${SPARK_DRIVER_MEMORY}
-      SPARK_WORKER_MEMORY: ${SPARK_EXECUTOR_MEMORY}
-      SPARK_WORKER_CORES: ${SPARK_EXECUTOR_CORES}
+      SPARK_NO_DAEMONIZE: "true"
     ports:
       - "8081:8080"
-      - "7077:7077"
     volumes:
-      - ./spark_jobs:/opt/spark/jobs
-      - ./data:/data
-      - spark_logs:/var/log/spark
-    mem_limit: 8g
-    cpus: 4
+      - ./spark_jobs:/opt/spark/jobs:ro
+      - ./data:/opt/airflow/data:ro
+      - spark_logs:/opt/bitnami/spark/logs
+    mem_limit: 2g
+    cpus: 1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/applications"]
+      test: ["CMD", "bash", "-lc", "curl -fsS http://localhost:8080 >/dev/null"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 20s
     restart: always
     networks:
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
-  # ----------------------
-  # Redis - PRODUCTION
-  # ----------------------
+  spark-worker:
+    image: bitnami/spark:3.4.1
+    env_file:
+      - .env.production
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: ${SPARK_MASTER}
+      SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY}
+      SPARK_WORKER_CORES: ${SPARK_WORKER_CORES}
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+      SPARK_SSL_ENABLED: no
+      SPARK_NO_DAEMONIZE: "true"
+    volumes:
+      - ./spark_jobs:/opt/spark/jobs:ro
+      - ./data:/opt/airflow/data:ro
+      - spark_logs:/opt/bitnami/spark/logs
+    mem_limit: 8g
+    cpus: 4
+    restart: always
+    networks:
+      - dp_data
+
   redis:
     image: redis:7-alpine
-    container_name: caliweura_redis
     env_file:
       - .env.production
     command: redis-server --requirepass ${REDIS_PASSWORD}
-    ports:
-      - "6379:6379"
     mem_limit: 1g
     cpus: 1
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -153,21 +126,8 @@ services:
       - dp_backend
     volumes:
       - redis_data:/data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
-  # ----------------------
-  # Airflow Init - PRODUCTION
-  # ----------------------
   airflow-init:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile.airflow
-    image: caliweura-airflow:latest
-    container_name: caliweura_airflow_init
     env_file:
       - .env.production
     depends_on:
@@ -175,41 +135,39 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CELERY__BROKER_URL: ${AIRFLOW__CELERY__BROKER_URL}
       AIRFLOW__CELERY__RESULT_BACKEND: ${AIRFLOW__CELERY__RESULT_BACKEND}
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: ${AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_WAREHOUSE: ${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
+      AIRFLOW_CONN_SPARK_DEFAULT: ${AIRFLOW_CONN_SPARK_DEFAULT}
+      AIRFLOW_CONN_MINIO_DEFAULT: ${AIRFLOW_CONN_MINIO_DEFAULT}
+      AIRFLOW_VAR_PLATFORM_ENV: ${ENVIRONMENT}
     entrypoint: >
-      bash -c "
+      bash -lc "
       airflow db upgrade &&
-      airflow users create \
-        --username admin \
-        --firstname Admin \
-        --lastname User \
-        --role Admin \
-        --email admin@airflow.local \
+      airflow users create
+        --username admin
+        --firstname Admin
+        --lastname User
+        --role Admin
+        --email admin@airflow.local
         --password ${AIRFLOW_ADMIN_PASSWORD} || true
       "
     restart: "no"
     networks:
       - dp_backend
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
+      - dp_data
 
-  # ----------------------
-  # Airflow Webserver - PRODUCTION
-  # ----------------------
   airflow-web:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile.airflow
-    image: caliweura-airflow:latest
-    container_name: caliweura_airflow_webserver
     env_file:
       - .env.production
     depends_on:
@@ -220,11 +178,18 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CELERY__BROKER_URL: ${AIRFLOW__CELERY__BROKER_URL}
       AIRFLOW__CELERY__RESULT_BACKEND: ${AIRFLOW__CELERY__RESULT_BACKEND}
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: ${AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_WAREHOUSE: ${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
+      AIRFLOW_CONN_SPARK_DEFAULT: ${AIRFLOW_CONN_SPARK_DEFAULT}
+      AIRFLOW_CONN_MINIO_DEFAULT: ${AIRFLOW_CONN_MINIO_DEFAULT}
+      AIRFLOW_VAR_PLATFORM_ENV: ${ENVIRONMENT}
     volumes:
       - ./dags:/opt/airflow/dags:ro
       - ./spark_jobs:/opt/airflow/spark_jobs:ro
       - ./scripts:/opt/airflow/scripts:ro
       - ./configs:/opt/airflow/configs:ro
+      - ./data:/opt/airflow/data:ro
       - airflow_logs:/opt/airflow/logs
     ports:
       - "8080:8080"
@@ -242,36 +207,30 @@ services:
       - dp_backend
       - dp_frontend
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
-  # ----------------------
-  # Airflow Scheduler - PRODUCTION
-  # ----------------------
   airflow-scheduler:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile.airflow
-    image: caliweura-airflow:latest
-    container_name: caliweura_airflow_scheduler
     env_file:
       - .env.production
     depends_on:
       airflow-web:
-        condition: service_started
+        condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CELERY__BROKER_URL: ${AIRFLOW__CELERY__BROKER_URL}
       AIRFLOW__CELERY__RESULT_BACKEND: ${AIRFLOW__CELERY__RESULT_BACKEND}
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: ${AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_WAREHOUSE: ${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
+      AIRFLOW_CONN_SPARK_DEFAULT: ${AIRFLOW_CONN_SPARK_DEFAULT}
+      AIRFLOW_CONN_MINIO_DEFAULT: ${AIRFLOW_CONN_MINIO_DEFAULT}
+      AIRFLOW_VAR_PLATFORM_ENV: ${ENVIRONMENT}
     volumes:
       - ./dags:/opt/airflow/dags:ro
       - ./spark_jobs:/opt/airflow/spark_jobs:ro
       - ./scripts:/opt/airflow/scripts:ro
       - ./configs:/opt/airflow/configs:ro
+      - ./data:/opt/airflow/data:ro
       - airflow_logs:/opt/airflow/logs
     command: scheduler
     mem_limit: 3g
@@ -286,199 +245,69 @@ services:
     networks:
       - dp_backend
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
-  # ----------------------
-  # Celery Worker - PRODUCTION
-  # ----------------------
   airflow-worker:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile.airflow
-    image: caliweura-airflow:latest
-    container_name: caliweura_airflow_worker
     env_file:
       - .env.production
     depends_on:
       redis:
         condition: service_healthy
       airflow-web:
-        condition: service_started
+        condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CELERY__BROKER_URL: ${AIRFLOW__CELERY__BROKER_URL}
       AIRFLOW__CELERY__RESULT_BACKEND: ${AIRFLOW__CELERY__RESULT_BACKEND}
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: ${AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_WAREHOUSE: ${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
+      AIRFLOW_CONN_SPARK_DEFAULT: ${AIRFLOW_CONN_SPARK_DEFAULT}
+      AIRFLOW_CONN_MINIO_DEFAULT: ${AIRFLOW_CONN_MINIO_DEFAULT}
+      AIRFLOW_VAR_PLATFORM_ENV: ${ENVIRONMENT}
     volumes:
       - ./dags:/opt/airflow/dags:ro
       - ./spark_jobs:/opt/airflow/spark_jobs:ro
       - ./scripts:/opt/airflow/scripts:ro
       - ./configs:/opt/airflow/configs:ro
+      - ./data:/opt/airflow/data:ro
       - airflow_logs:/opt/airflow/logs
-    command: celery worker --loglevel=info --concurrency=4
+    command: celery worker --loglevel=info --concurrency=${AIRFLOW_WORKER_CONCURRENCY}
     mem_limit: 2g
     cpus: 2
     restart: always
     networks:
       - dp_backend
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
-  # ----------------------
-  # Kafka - PRODUCTION
-  # ----------------------
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: dp_zookeeper
+    profiles: ["streaming"]
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_SYNC_LIMIT: 2
-      ZOOKEEPER_INIT_LIMIT: 5
       ZOOKEEPER_AUTOPURGE_SNAP_RETAIN_COUNT: 5
       ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL: 1
-    ports:
-      - "2181:2181"
     mem_limit: 512m
     cpus: 0.5
-    healthcheck:
-      test: ["CMD", "echo", "ruok | nc localhost 2181"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     restart: always
     networks:
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: dp_kafka
+    profiles: ["streaming"]
     depends_on:
       - zookeeper
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-    ports:
-      - "9092:9092"
     mem_limit: 1g
     cpus: 1
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     restart: always
     networks:
       - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
-
-  # ----------------------
-  # Prometheus - PRODUCTION MONITORING
-  # ----------------------
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: dp_prometheus
-    volumes:
-      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
-    mem_limit: 1g
-    cpus: 1
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: always
-    networks:
-      - dp_data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
-
-  # ----------------------
-  # Grafana - PRODUCTION MONITORING
-  # ----------------------
-  grafana:
-    image: grafana/grafana:latest
-    container_name: dp_grafana
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
-    ports:
-      - "3000:3000"
-    mem_limit: 512m
-    cpus: 0.5
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: always
-    networks:
-      - dp_data
-    depends_on:
-      - prometheus
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
-
-volumes:
-  postgres_data:
-  minio_data:
-  redis_data:
-  airflow_logs:
-  spark_logs:
-  prometheus_data:
-  grafana_data:
-
-networks:
-  dp_backend:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
-  dp_frontend:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.21.0.0/16
-  dp_data:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.22.0.0/16

@@ -1,12 +1,5 @@
-from pyspark.sql import SparkSession
+from job_config import build_spark_session
 
-spark = SparkSession.builder.appName("ConnectionTest").getOrCreate()
-
-df = spark.createDataFrame(
-    [("ok", 1), ("spark", 2)],
-    ["status", "value"]
-)
-
-df.show()
-
+spark = build_spark_session("ConnectionTest")
+spark.createDataFrame([("ok", 1), ("spark", 2)], ["status", "value"]).show()
 spark.stop()

@@ -1,23 +1,6 @@
-# ===================================================
-# DOCKER-COMPOSE DEVELOPMENT
-# ===================================================
-# Optimized for 16GB RAM laptop
-# LocalExecutor for single-machine execution
-# Minimal resource allocation
-# All services for full-stack testing
-
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
-version: "3.9"
-
 services:
-
-  # ----------------------
-  # PostgreSQL - DEVELOPMENT
-  # ----------------------
   postgres:
     image: postgres:15-alpine
-    container_name: caliweura_postgres
     env_file:
       - .env.development
     environment:
@@ -26,15 +9,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./scripts/init_warehouse.sql:/docker-entrypoint-initdb.d/02-warehouse.sql
-      - ./scripts/init_users.sql:/docker-entrypoint-initdb.d/03-users.sql
+      - ./scripts/init_users.sh:/docker-entrypoint-initdb.d/01-init_users.sh:ro
+      - ./scripts/init_db.sh:/docker-entrypoint-initdb.d/02-init_db.sh:ro
+      - ./scripts/init_warehouse.sh:/docker-entrypoint-initdb.d/03-init_warehouse.sh:ro
     ports:
       - "5432:5432"
     mem_limit: 512m
     cpus: 0.5
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,12 +27,8 @@ services:
       - dp_backend
       - dp_data
 
-  # ----------------------
-  # MinIO (Data Lake) - DEVELOPMENT
-  # ----------------------
   minio:
     image: minio/minio:RELEASE.2024-01-16T16-07-38Z
-    container_name: caliweura_minio
     env_file:
       - .env.development
     environment:
@@ -73,44 +52,40 @@ services:
     networks:
       - dp_data
 
-  # ----------------------
-  # Spark (Single Node) - DEVELOPMENT
-  # ----------------------
-  spark_master:
-    image: apache/spark:3.4.1
-    container_name: caliweura_spark_master
+  spark-master:
+    image: bitnami/spark:3.4.1
     env_file:
       - .env.development
     environment:
       SPARK_MODE: master
       SPARK_RPC_AUTHENTICATION_ENABLED: no
       SPARK_RPC_ENCRYPTION_ENABLED: no
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
       SPARK_SSL_ENABLED: no
+      SPARK_NO_DAEMONIZE: "true"
     ports:
-      - "8081:8080"
       - "7077:7077"
+      - "8081:8080"
     volumes:
-      - ./spark_jobs:/opt/spark/jobs
-      - ./data:/data
-      - spark_logs:/var/log/spark
+      - ./spark_jobs:/opt/spark/jobs:ro
+      - ./data:/opt/airflow/data:ro
+      - spark_logs:/opt/bitnami/spark/logs
     mem_limit: 1g
     cpus: 0.8
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/applications"]
+      test: ["CMD", "bash", "-lc", "curl -fsS http://localhost:8080 >/dev/null"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
     networks:
       - dp_data
 
-  # ----------------------
-  # Redis (for future CeleryExecutor migration) - DEVELOPMENT
-  # ----------------------
   redis:
     image: redis:7-alpine
-    container_name: caliweura_redis
+    profiles: ["celery"]
+    command: redis-server --save 60 1
     ports:
       - "6379:6379"
     mem_limit: 256m
@@ -125,48 +100,43 @@ services:
     networks:
       - dp_backend
 
-  # ----------------------
-  # Airflow Init - DEVELOPMENT
-  # ----------------------
   airflow-init:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile.airflow
-    image: caliweura-airflow:latest
-    container_name: caliweura_airflow_init
     env_file:
       - .env.development
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: ${AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_WAREHOUSE: ${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
+      AIRFLOW_CONN_SPARK_DEFAULT: ${AIRFLOW_CONN_SPARK_DEFAULT}
+      AIRFLOW_CONN_MINIO_DEFAULT: ${AIRFLOW_CONN_MINIO_DEFAULT}
+      AIRFLOW_VAR_PLATFORM_ENV: ${ENVIRONMENT}
     entrypoint: >
-      bash -c "
+      bash -lc "
       airflow db upgrade &&
-      airflow users create \
-        --username admin \
-        --firstname Admin \
-        --lastname User \
-        --role Admin \
-        --email admin@airflow.local \
+      airflow users create
+        --username admin
+        --firstname Admin
+        --lastname User
+        --role Admin
+        --email admin@airflow.local
         --password ${AIRFLOW_ADMIN_PASSWORD:-admin123} || true
       "
     restart: "no"
     networks:
       - dp_backend
+      - dp_data
 
-  # ----------------------
-  # Airflow Webserver - DEVELOPMENT
-  # ----------------------
   airflow-web:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile.airflow
-    image: caliweura-airflow:latest
-    container_name: caliweura_airflow_webserver
     env_file:
       - .env.development
     depends_on:
@@ -175,11 +145,18 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: ${AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_WAREHOUSE: ${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
+      AIRFLOW_CONN_SPARK_DEFAULT: ${AIRFLOW_CONN_SPARK_DEFAULT}
+      AIRFLOW_CONN_MINIO_DEFAULT: ${AIRFLOW_CONN_MINIO_DEFAULT}
+      AIRFLOW_VAR_PLATFORM_ENV: ${ENVIRONMENT}
     volumes:
       - ./dags:/opt/airflow/dags
-      - ./spark_jobs:/opt/airflow/spark_jobs
-      - ./scripts:/opt/airflow/scripts
-      - ./configs:/opt/airflow/configs
+      - ./spark_jobs:/opt/airflow/spark_jobs:ro
+      - ./scripts:/opt/airflow/scripts:ro
+      - ./configs:/opt/airflow/configs:ro
+      - ./data:/opt/airflow/data
       - airflow_logs:/opt/airflow/logs
     ports:
       - "8080:8080"
@@ -196,29 +173,29 @@ services:
     networks:
       - dp_backend
       - dp_frontend
+      - dp_data
 
-  # ----------------------
-  # Airflow Scheduler - DEVELOPMENT
-  # ----------------------
   airflow-scheduler:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile.airflow
-    image: caliweura-airflow:latest
-    container_name: caliweura_airflow_scheduler
     env_file:
       - .env.development
     depends_on:
       airflow-web:
-        condition: service_started
+        condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: ${AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_WAREHOUSE: ${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
+      AIRFLOW_CONN_SPARK_DEFAULT: ${AIRFLOW_CONN_SPARK_DEFAULT}
+      AIRFLOW_CONN_MINIO_DEFAULT: ${AIRFLOW_CONN_MINIO_DEFAULT}
+      AIRFLOW_VAR_PLATFORM_ENV: ${ENVIRONMENT}
     volumes:
       - ./dags:/opt/airflow/dags
-      - ./spark_jobs:/opt/airflow/spark_jobs
-      - ./scripts:/opt/airflow/scripts
-      - ./configs:/opt/airflow/configs
+      - ./spark_jobs:/opt/airflow/spark_jobs:ro
+      - ./scripts:/opt/airflow/scripts:ro
+      - ./configs:/opt/airflow/configs:ro
+      - ./data:/opt/airflow/data
       - airflow_logs:/opt/airflow/logs
     command: scheduler
     mem_limit: 1g
@@ -232,17 +209,14 @@ services:
     restart: unless-stopped
     networks:
       - dp_backend
+      - dp_data
 
-  # ----------------------
-  # Kafka (OPTIONAL) - DEVELOPMENT
-  # ----------------------
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: dp_zookeeper
+    profiles: ["streaming"]
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_SYNC_LIMIT: 2
-      ZOOKEEPER_INIT_LIMIT: 5
     ports:
       - "2181:2181"
     mem_limit: 256m
@@ -253,7 +227,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: dp_kafka
+    profiles: ["streaming"]
     depends_on:
       - zookeeper
     environment:
@@ -264,28 +238,8 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
-    mem_limit: 512m
-    cpus: 0.5
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+    mem_limit: 768m
+    cpus: 0.7
     restart: unless-stopped
     networks:
       - dp_data
-
-volumes:
-  postgres_data:
-  minio_data:
-  airflow_logs:
-  spark_logs:
-
-networks:
-  dp_backend:
-    driver: bridge
-  dp_frontend:
-    driver: bridge
-  dp_data:
-    driver: bridge
