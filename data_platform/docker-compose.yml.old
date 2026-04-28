@@ -169,7 +169,7 @@ services:
   # Apache Spark - Master Node
   # ============================================================================
   spark_master:
-    image: bitnami/spark:3.4.1
+    image: spark/spark:3.4.1
     container_name: caliweura_spark_master
     environment:
       SPARK_MODE: master
@@ -195,7 +195,7 @@ services:
   # Apache Spark - Worker Node
   # ============================================================================
   spark_worker:
-    image: bitnami/spark:3.4-debian-11
+    image: spark/spark:3.4-debian-11
     container_name: caliweura_spark_worker
     depends_on:
       - spark_master

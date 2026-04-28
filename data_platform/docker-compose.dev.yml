@@ -1,12 +1,16 @@
 services:
   postgres:
     image: postgres:15-alpine
+    container_name: caliweura_postgres
     env_file:
       - .env.development
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # POSTGRES_USER=postgres
+      # POSTGRES_PASSWORD=airflow_dev_pass
+      # POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init_users.sh:/docker-entrypoint-initdb.d/01-init_users.sh:ro
@@ -28,7 +32,9 @@ services:
       - dp_data
 
   minio:
-    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    # image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    image: minio/minio:latest
+    container_name: caliweura_minio
     env_file:
       - .env.development
     environment:
@@ -53,23 +59,25 @@ services:
       - dp_data
 
   spark-master:
-    image: bitnami/spark:3.4.1
+    image: apache/spark:3.4.1
+    container_name: caliweura_spark_master
     env_file:
       - .env.development
     environment:
-      SPARK_MODE: master
+      #SPARK_MODE: master --for bitnami/spark image --- IGNORE ---
       SPARK_RPC_AUTHENTICATION_ENABLED: no
       SPARK_RPC_ENCRYPTION_ENABLED: no
       SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
       SPARK_SSL_ENABLED: no
       SPARK_NO_DAEMONIZE: "true"
+    command: /opt/spark/sbin/start-master.sh
     ports:
       - "7077:7077"
       - "8081:8080"
     volumes:
       - ./spark_jobs:/opt/spark/jobs:ro
       - ./data:/opt/airflow/data:ro
-      - spark_logs:/opt/bitnami/spark/logs
+      - spark_logs:/opt/spark/logs
     mem_limit: 1g
     cpus: 0.8
     healthcheck:
@@ -84,6 +92,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    container_name: caliweura_redis
     profiles: ["celery"]
     command: redis-server --save 60 1
     ports:
@@ -129,7 +138,7 @@ services:
         --lastname User
         --role Admin
         --email admin@airflow.local
-        --password ${AIRFLOW_ADMIN_PASSWORD:-admin123} || true
+        --password ${AIRFLOW_ADMIN_PASSWORD} || true
       "
     restart: "no"
     networks:
@@ -137,6 +146,7 @@ services:
       - dp_data
 
   airflow-web:
+    container_name: caliweura_airflow_web
     env_file:
       - .env.development
     depends_on:
@@ -213,6 +223,7 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
+    container_name: caliweura_zookeeper
     profiles: ["streaming"]
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -227,6 +238,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
+    container_name: caliweura_kafka
     profiles: ["streaming"]
     depends_on:
       - zookeeper

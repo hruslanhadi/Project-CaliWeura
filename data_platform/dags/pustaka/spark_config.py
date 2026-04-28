@@ -6,7 +6,8 @@ from pustaka.runtime_config import get_minio_config, get_spark_master, get_spark
 def build_spark_conf():
     minio = get_minio_config()
     return {
-        "spark.master": get_spark_master(),
+        # "spark.master": get_spark_master(),
+        "spark.master": "spark://spark-master:7077",  # override for testing - ignore
         "spark.executor.memory": os.getenv("SPARK_EXECUTOR_MEMORY", "512m"),
         "spark.driver.memory": os.getenv("SPARK_DRIVER_MEMORY", "512m"),
         "spark.executor.cores": os.getenv("SPARK_EXECUTOR_CORES", "1"),

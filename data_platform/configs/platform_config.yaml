@@ -16,7 +16,7 @@ services:
       - gold
 
   spark:
-    master: spark://spark_master:7077
+    master: spark://spark-master:7077
     memory:
       driver: 1g
       executor: 1g

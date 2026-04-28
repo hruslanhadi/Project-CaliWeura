@@ -23,6 +23,7 @@ PG_WAREHOUSE_DB = "data_warehouse"
 
 # Spark Configuration
 SPARK_MASTER = "spark://spark_master:7077"
+# SPARK_MASTER = "spark://caliweura_spark_master:7077"
 SPARK_DRIVER_MEMORY = "1g"
 SPARK_EXECUTOR_MEMORY = "1g"
 SPARK_EXECUTOR_CORES = 2

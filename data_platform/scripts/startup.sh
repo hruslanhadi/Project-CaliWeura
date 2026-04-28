@@ -30,7 +30,7 @@ wait_for_service() {
     echo "✅ $host:$port is ready"
 }
 
-COMPOSE_FILES="--env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml"
+COMPOSE_FILES="--env-file ../.env.development -f ../docker-compose.yml -f ../docker-compose.dev.yml"
 
 echo "🐳 Starting Docker Compose services..."
 docker compose $COMPOSE_FILES up -d

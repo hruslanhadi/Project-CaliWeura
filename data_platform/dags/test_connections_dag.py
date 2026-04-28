@@ -42,7 +42,7 @@ with DAG(
         application="/opt/airflow/spark_jobs/test_spark.py",
         conn_id="spark_default",  # must exist
         conf={
-            "spark.master": "spark://spark_master:7077",
+            "spark.master": "spark://spark-master:7077",
         },
         verbose=True,
     )
@@ -55,7 +55,7 @@ with DAG(
             "s3",
             endpoint_url="http://minio:9000",
             aws_access_key_id="minioadmin",
-            aws_secret_access_key="minioadmin_secure_pass",
+            aws_secret_access_key="minioadmin_dev_pass",
         )
 
         buckets = s3.list_buckets()

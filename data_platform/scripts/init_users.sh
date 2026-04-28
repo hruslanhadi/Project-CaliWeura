@@ -3,30 +3,27 @@ set -euo pipefail
 
 psql \
   -v ON_ERROR_STOP=1 \
-  -v postgres_password="$POSTGRES_PASSWORD" \
-  -v warehouse_password="$PG_WAREHOUSE_PASSWORD" \
-  -v analytics_password="$PG_ANALYTICS_PASSWORD" \
   --username "$POSTGRES_USER" \
-  --dbname postgres <<'SQL'
+  --dbname postgres <<SQL
 DO
 \$\$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'airflow_meta') THEN
-        CREATE ROLE airflow_meta LOGIN PASSWORD :'postgres_password';
+        CREATE ROLE airflow_meta LOGIN PASSWORD '${POSTGRES_PASSWORD}';
     ELSE
-        ALTER ROLE airflow_meta WITH PASSWORD :'postgres_password';
+        ALTER ROLE airflow_meta WITH PASSWORD '${POSTGRES_PASSWORD}';
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'warehouse_user') THEN
-        CREATE ROLE warehouse_user LOGIN PASSWORD :'warehouse_password';
+        CREATE ROLE warehouse_user LOGIN PASSWORD '${PG_WAREHOUSE_PASSWORD}';
     ELSE
-        ALTER ROLE warehouse_user WITH PASSWORD :'warehouse_password';
+        ALTER ROLE warehouse_user WITH PASSWORD '${PG_WAREHOUSE_PASSWORD}';
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'analytics_user') THEN
-        CREATE ROLE analytics_user LOGIN PASSWORD :'analytics_password';
+        CREATE ROLE analytics_user LOGIN PASSWORD '${PG_ANALYTICS_PASSWORD}';
     ELSE
-        ALTER ROLE analytics_user WITH PASSWORD :'analytics_password';
+        ALTER ROLE analytics_user WITH PASSWORD '${PG_ANALYTICS_PASSWORD}';
     END IF;
 END
 \$\$;

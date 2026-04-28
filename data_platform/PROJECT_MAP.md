@@ -228,7 +228,7 @@ AGGREGATION TABLES (Denormalized for Speed):
 | Technology | Version | Image |
 |-----------|---------|-------|
 | Apache Airflow | 2.7 | apache/airflow:2.7 |
-| Apache Spark | 3.4 | bitnami/spark:3.4 |
+| Apache Spark | 3.4 | apache/spark:3.4 |
 | Apache Kafka | 7.5 | confluentinc/cp-kafka:7.5 |
 | PostgreSQL | 15 | postgres:15-alpine |
 | MinIO | latest | minio/minio:latest |

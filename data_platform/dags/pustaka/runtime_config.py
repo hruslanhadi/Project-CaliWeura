@@ -36,7 +36,7 @@ def get_platform_env():
 def get_spark_master():
     conn = _safe_connection(SPARK_CONN_ID)
     if conn and conn.host:
-        scheme = conn.conn_type or "spark"
+        scheme =  "spark"
         port = conn.port or 7077
         return f"{scheme}://{conn.host}:{port}"
     return _env("SPARK_MASTER", DEFAULT_SPARK_MASTER)

@@ -1,5 +1,16 @@
-from job_config import build_spark_session
+from pyspark.sql import SparkSession
 
-spark = build_spark_session("ConnectionTest")
-spark.createDataFrame([("ok", 1), ("spark", 2)], ["status", "value"]).show()
+# Initialize a clean session without Delta Lake extensions
+spark = SparkSession.builder \
+    .appName("SimpleTest") \
+    .getOrCreate()
+
+# Create a simple list of tuples
+data = [("ok", 1), ("spark", 2), ("docker", 3)]
+columns = ["status", "value"]
+
+# Create and show the DataFrame
+df = spark.createDataFrame(data, columns)
+df.show()
+
 spark.stop()
